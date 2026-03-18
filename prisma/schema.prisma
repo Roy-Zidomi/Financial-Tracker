@@ -21,6 +21,7 @@ model User {
   transactions Transaction[]
   budgets      Budget[]
   savingsGoals SavingsGoal[]
+  predictionLogs PredictionLog[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -42,17 +43,23 @@ model Category {
 }
 
 model Transaction {
-  id          String    @id @default(cuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoryId  String?
-  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  type        EntryType
-  amount      Decimal   @db.Decimal(12, 2)
-  description String?
-  date        DateTime
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId             String?
+  category               Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type                   EntryType
+  amount                 Decimal   @db.Decimal(12, 2)
+  description            String?
+  date                   DateTime
+  predictedCategoryLabel String?
+  isAutoCategorized      Boolean   @default(false)
+  confidenceScore        Decimal?  @db.Decimal(5, 4)
+  isCorrectedByUser      Boolean   @default(false)
+  mlSource               String?
+  predictionCreatedAt    DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([userId, date])
   @@index([categoryId])
@@ -86,4 +93,23 @@ model SavingsGoal {
   updatedAt     DateTime @updatedAt
 
   @@index([userId, createdAt])
+}
+
+enum PredictionType {
+  CATEGORY
+  SPENDING
+  INSIGHT
+}
+
+model PredictionLog {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  predictionType PredictionType
+  inputSnapshot  Json?
+  result         Json?
+  confidence     Decimal?       @db.Decimal(5, 4)
+  createdAt      DateTime       @default(now())
+
+  @@index([userId, predictionType, createdAt])
 }

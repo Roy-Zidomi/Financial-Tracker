@@ -3,6 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { categoryCreateSchema } from "@/lib/validations";
 import { NextRequest, NextResponse } from "next/server";
 
+function normalizeCategoryName(value: string) {
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 export async function GET() {
   const userId = await requireUserId();
   if (!userId) {
@@ -13,10 +21,19 @@ export async function GET() {
     where: {
       OR: [{ userId }, { isDefault: true, userId: null }],
     },
-    orderBy: [{ type: "asc" }, { name: "asc" }],
+    orderBy: [{ type: "asc" }, { name: "asc" }, { isDefault: "asc" }, { createdAt: "asc" }],
   });
 
-  return NextResponse.json(categories);
+  // Remove duplicates by (type + normalized name), prioritizing user categories.
+  const unique = new Map<string, (typeof categories)[number]>();
+  for (const category of categories) {
+    const key = `${category.type}:${normalizeCategoryName(category.name)}`;
+    if (!unique.has(key)) {
+      unique.set(key, category);
+    }
+  }
+
+  return NextResponse.json(Array.from(unique.values()));
 }
 
 export async function POST(request: NextRequest) {

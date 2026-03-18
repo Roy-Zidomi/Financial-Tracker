@@ -24,6 +24,7 @@ type TrendPoint = {
   month: string;
   income: number;
   expense: number;
+  predictedExpense?: number;
 };
 
 const colors = ["#6cc8ff", "#f59e0b", "#2ad6c0", "#ef4444", "#0ea5e9", "#22c55e"];
@@ -107,6 +108,7 @@ export function MonthlyTrendChart({ data }: { data: TrendPoint[] }) {
   if (data.length === 0) {
     return <p className="text-sm text-slate-400">No monthly trend data yet.</p>;
   }
+  const hasPrediction = data.some((item) => typeof item.predictedExpense === "number");
 
   return (
     <div className="h-72">
@@ -120,6 +122,10 @@ export function MonthlyTrendChart({ data }: { data: TrendPoint[] }) {
             <linearGradient id="expenseFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4} />
               <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+            </linearGradient>
+            <linearGradient id="predictedExpenseFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
+              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="#26364d" strokeDasharray="3 3" vertical={false} />
@@ -163,6 +169,18 @@ export function MonthlyTrendChart({ data }: { data: TrendPoint[] }) {
             fill="url(#expenseFill)"
             activeDot={{ r: 5, stroke: "#2a0808", strokeWidth: 2 }}
           />
+          {hasPrediction ? (
+            <Area
+              type="monotone"
+              dataKey="predictedExpense"
+              name="Predicted Expense"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              strokeDasharray="6 5"
+              fill="url(#predictedExpenseFill)"
+              activeDot={{ r: 5, stroke: "#3b2b06", strokeWidth: 2 }}
+            />
+          ) : null}
         </AreaChart>
       </ResponsiveContainer>
     </div>

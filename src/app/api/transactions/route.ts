@@ -1,7 +1,9 @@
 import { badRequest, requireUserId, unauthorized } from "@/lib/api";
+import { findCategoryByPrediction } from "@/lib/category-mapping";
+import { predictCategoryMl } from "@/lib/ml-client";
 import { prisma } from "@/lib/prisma";
 import { transactionCreateSchema } from "@/lib/validations";
-import { EntryType, Prisma } from "@prisma/client";
+import { EntryType, PredictionType, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -72,23 +74,58 @@ export async function POST(request: NextRequest) {
 
   try {
     const parsed = transactionCreateSchema.parse(await request.json());
+    const description = parsed.description?.trim() || undefined;
+    const categoriesForType = await prisma.category.findMany({
+      where: {
+        OR: [{ userId }, { isDefault: true, userId: null }],
+        type: parsed.type,
+      },
+      select: { id: true, name: true, type: true },
+    });
 
     if (parsed.categoryId) {
-      const category = await prisma.category.findFirst({
-        where: {
-          id: parsed.categoryId,
-          OR: [{ userId }, { isDefault: true, userId: null }],
-        },
-      });
+      const category = categoriesForType.find((item) => item.id === parsed.categoryId);
       if (!category) {
         return NextResponse.json({ error: "Invalid category" }, { status: 400 });
       }
     }
 
+    const prediction =
+      description && description.length > 0
+        ? await predictCategoryMl({
+            description,
+            transaction_type: parsed.type,
+            candidate_labels: categoriesForType.map((item) => item.name),
+          })
+        : null;
+
+    const predictedCategory = prediction
+      ? findCategoryByPrediction(categoriesForType, prediction.predicted_label)
+      : null;
+    const resolvedCategoryId = parsed.categoryId ?? predictedCategory?.id;
+    const isAutoCategorized = !parsed.categoryId && Boolean(predictedCategory);
+    const isCorrectedByUser =
+      parsed.isCorrectedByUser ??
+      Boolean(
+        parsed.categoryId &&
+          predictedCategory &&
+          parsed.categoryId !== predictedCategory.id,
+      );
+
     const transaction = await prisma.transaction.create({
       data: {
-        ...parsed,
         userId,
+        type: parsed.type,
+        amount: parsed.amount,
+        description,
+        date: parsed.date,
+        categoryId: resolvedCategoryId,
+        predictedCategoryLabel: prediction?.predicted_label ?? null,
+        isAutoCategorized,
+        confidenceScore: prediction?.confidence_score,
+        isCorrectedByUser,
+        mlSource: prediction?.model_source ?? null,
+        predictionCreatedAt: prediction ? new Date() : null,
       },
       include: {
         category: {
@@ -96,6 +133,28 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    if (prediction) {
+      await prisma.predictionLog.create({
+        data: {
+          userId,
+          predictionType: PredictionType.CATEGORY,
+          inputSnapshot: {
+            description,
+            transactionType: parsed.type,
+            categoryId: parsed.categoryId ?? null,
+          },
+          result: {
+            predictedLabel: prediction.predicted_label,
+            predictedCategoryId: predictedCategory?.id ?? null,
+            resolvedCategoryId: resolvedCategoryId ?? null,
+            isAutoCategorized,
+            modelSource: prediction.model_source,
+          },
+          confidence: prediction.confidence_score,
+        },
+      });
+    }
 
     return NextResponse.json(transaction, { status: 201 });
   } catch (error) {

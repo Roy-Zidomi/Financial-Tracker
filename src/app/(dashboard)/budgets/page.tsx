@@ -13,11 +13,15 @@ type BudgetCategory = {
 };
 
 type BudgetWarning = "SAFE" | "NEAR_LIMIT" | "OVER_LIMIT";
+type PredictiveWarning = "ON_TRACK" | "AT_RISK" | "LIKELY_OVER";
 
 type Budget = {
   id: string;
   amountLimit: string | number;
   spent: number;
+  predictedSpent: number;
+  predictiveWarning: PredictiveWarning;
+  predictiveMessage: string;
   month: number;
   year: number;
   category: {
@@ -31,6 +35,12 @@ const warningStyle: Partial<Record<BudgetWarning, string>> = {
   SAFE: "text-emerald-200 bg-emerald-900/30",
   NEAR_LIMIT: "text-amber-200 bg-amber-900/30",
   OVER_LIMIT: "text-rose-200 bg-rose-900/30",
+};
+
+const predictiveStyle: Record<PredictiveWarning, string> = {
+  ON_TRACK: "text-emerald-200 bg-emerald-900/30",
+  AT_RISK: "text-amber-200 bg-amber-900/30",
+  LIKELY_OVER: "text-rose-200 bg-rose-900/30",
 };
 
 export default function BudgetsPage() {
@@ -96,11 +106,22 @@ export default function BudgetsPage() {
               <p className="mt-2 text-sm text-slate-300">
                 {formatCurrency(budget.spent)} of {formatCurrency(limit)}
               </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Prediksi akhir bulan: {formatCurrency(budget.predictedSpent)}
+              </p>
               <div className="mt-3 h-2 rounded-full bg-slate-800">
                 <div
                   className="h-full rounded-full bg-cyan-400"
                   style={{ width: `${Math.max(0, Math.min(ratio, 100))}%` }}
                 />
+              </div>
+              <div className="mt-3 flex items-start justify-between gap-2">
+                <span
+                  className={`rounded px-2 py-1 text-xs font-medium ${predictiveStyle[budget.predictiveWarning]}`}
+                >
+                  {budget.predictiveWarning.replace("_", " ")}
+                </span>
+                <p className="text-right text-xs text-slate-300">{budget.predictiveMessage}</p>
               </div>
               <button
                 onClick={() => removeBudget(budget.id)}

@@ -30,9 +30,21 @@ export const transactionCreateSchema = z.object({
   amount: amountSchema,
   description: z.string().trim().max(160).optional(),
   date: z.coerce.date(),
+  isCorrectedByUser: z.boolean().optional(),
 });
 
-export const transactionUpdateSchema = transactionCreateSchema.partial();
+export const transactionUpdateSchema = z
+  .object({
+    categoryId: z.string().min(1).nullable().optional(),
+    type: z.nativeEnum(EntryType).optional(),
+    amount: amountSchema.optional(),
+    description: z.string().trim().max(160).nullable().optional(),
+    date: z.coerce.date().optional(),
+    isCorrectedByUser: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "No update fields provided",
+  });
 
 export const budgetCreateSchema = z.object({
   categoryId: z.string().min(1).nullable().optional(),

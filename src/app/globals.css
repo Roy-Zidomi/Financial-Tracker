@@ -100,3 +100,80 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .fade-up-delay {
   animation: riseFade 620ms ease-out both;
 }
+
+.card-hover {
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line) 45%);
+  box-shadow: 0 20px 30px rgb(0 0 0 / 24%);
+}
+
+.stat-chip {
+  border: 1px solid #2a3a53;
+  background: rgb(9 15 25 / 70%);
+  border-radius: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  animation: riseFade 520ms ease both;
+}
+
+@keyframes drift {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+  }
+  50% {
+    transform: translateY(-18px) translateX(8px) scale(1.04);
+  }
+  100% {
+    transform: translateY(0) translateX(0) scale(1);
+  }
+}
+
+.bg-orb {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  filter: blur(24px);
+  opacity: 0.55;
+  animation: drift 9s ease-in-out infinite;
+}
+
+.bg-orb-a {
+  top: -8rem;
+  left: -5rem;
+  width: 18rem;
+  height: 18rem;
+  background: #0e4b8d;
+}
+
+.bg-orb-b {
+  top: 12rem;
+  right: -6rem;
+  width: 22rem;
+  height: 22rem;
+  background: #0e635b;
+  animation-delay: 1.2s;
+}
+
+.bg-orb-c {
+  bottom: -7rem;
+  left: 22%;
+  width: 16rem;
+  height: 16rem;
+  background: #6d4b12;
+  animation-delay: 2s;
+}
+
+.stagger-1 {
+  animation: riseFade 420ms ease both;
+}
+
+.stagger-2 {
+  animation: riseFade 620ms ease both;
+}
+
+.stagger-3 {
+  animation: riseFade 820ms ease both;
+}

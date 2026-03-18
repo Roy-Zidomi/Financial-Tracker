@@ -1,5 +1,12 @@
 import { badRequest, requireUserId, unauthorized } from "@/lib/api";
+import { normalizeLabel } from "@/lib/category-mapping";
+import { predictSpendingMl } from "@/lib/ml-client";
 import { prisma } from "@/lib/prisma";
+import {
+  buildCategoryDailyExpenses,
+  buildDailyExpenses,
+  buildHistoricalMonthlyExpenses,
+} from "@/lib/spending-payload";
 import { budgetCreateSchema } from "@/lib/validations";
 import { EntryType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
@@ -32,6 +39,60 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
+  const [monthExpenseTransactions, historyExpenseTransactions] = await Promise.all([
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        type: EntryType.EXPENSE,
+        date: { gte: start, lte: end },
+      },
+      include: {
+        category: { select: { name: true } },
+      },
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        type: EntryType.EXPENSE,
+        date: { lt: start },
+      },
+      orderBy: { date: "asc" },
+    }),
+  ]);
+
+  const spendingPrediction = await predictSpendingMl({
+    month,
+    year,
+    daily_expenses: buildDailyExpenses(
+      monthExpenseTransactions.map((item) => ({
+        date: item.date,
+        amount: Number(item.amount),
+        categoryName: item.category?.name,
+      })),
+    ),
+    historical_monthly_expenses: buildHistoricalMonthlyExpenses(
+      historyExpenseTransactions.map((item) => ({
+        date: item.date,
+        amount: Number(item.amount),
+      })),
+      6,
+    ),
+    category_daily_expenses: buildCategoryDailyExpenses(
+      monthExpenseTransactions.map((item) => ({
+        date: item.date,
+        amount: Number(item.amount),
+        categoryName: item.category?.name,
+      })),
+    ),
+  });
+
+  const categoryForecastMap = new Map(
+    (spendingPrediction?.category_forecasts ?? []).map((item) => [
+      normalizeLabel(item.category),
+      item.predicted_monthly_spent,
+    ]),
+  );
+
   const mapped = await Promise.all(
     budgets.map(async (budget) => {
       const aggregate = await prisma.transaction.aggregate({
@@ -46,10 +107,27 @@ export async function GET(request: NextRequest) {
       const spent = Number(aggregate._sum.amount ?? 0);
       const limit = Number(budget.amountLimit);
       const ratio = limit > 0 ? spent / limit : 0;
+      const predictedSpent = spendingPrediction
+        ? budget.category?.name
+          ? (categoryForecastMap.get(normalizeLabel(budget.category.name)) ?? spent)
+          : spendingPrediction.predicted_monthly_expense
+        : spent;
+      const predictedRatio = limit > 0 ? predictedSpent / limit : 0;
+      const predictiveWarning =
+        predictedRatio >= 1 ? "LIKELY_OVER" : predictedRatio >= 0.85 ? "AT_RISK" : "ON_TRACK";
+      const predictiveMessage =
+        predictiveWarning === "LIKELY_OVER"
+          ? "Berdasarkan tren saat ini, budget ini kemungkinan terlewati sebelum akhir bulan."
+          : predictiveWarning === "AT_RISK"
+            ? "Tren pengeluaran mendekati batas budget. Pertimbangkan menahan belanja."
+            : "Tren pengeluaran masih aman terhadap budget.";
 
       return {
         ...budget,
         spent,
+        predictedSpent,
+        predictiveWarning,
+        predictiveMessage,
         warning:
           ratio >= 1
             ? "OVER_LIMIT"

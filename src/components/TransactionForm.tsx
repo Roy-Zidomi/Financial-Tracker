@@ -1,7 +1,7 @@
 "use client";
 
 import { EntryType } from "@prisma/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Category = {
   id: string;
@@ -16,6 +16,14 @@ type TransactionFormProps = {
 
 export function TransactionForm({ categories, onCreated }: TransactionFormProps) {
   const [loading, setLoading] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
+  const [suggestion, setSuggestion] = useState<{
+    predictedLabel: string;
+    confidenceScore: number;
+    categoryId: string | null;
+    categoryName: string;
+  } | null>(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState<{
     type: EntryType;
@@ -33,6 +41,57 @@ export function TransactionForm({ categories, onCreated }: TransactionFormProps)
 
   const filteredCategories = categories.filter((item) => item.type === form.type);
 
+  useEffect(() => {
+    const description = form.description.trim();
+    if (description.length < 3) {
+      return;
+    }
+    if (form.categoryId) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setSuggesting(true);
+      setSuggestionError("");
+
+      const response = await fetch("/api/ml/category", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          type: form.type,
+        }),
+      });
+
+      if (cancelled) {
+        return;
+      }
+      setSuggesting(false);
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setSuggestionError(payload.error ?? "Failed to get AI suggestion");
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        predictedLabel: string;
+        confidenceScore: number;
+        categoryId: string | null;
+        categoryName: string;
+      };
+      setSuggestion(payload);
+      if (payload.categoryId) {
+        setForm((prev) => (prev.categoryId ? prev : { ...prev, categoryId: payload.categoryId! }));
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form.description, form.type, form.categoryId]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -45,6 +104,9 @@ export function TransactionForm({ categories, onCreated }: TransactionFormProps)
         ...form,
         amount: Number(form.amount),
         categoryId: form.categoryId || undefined,
+        isCorrectedByUser: Boolean(
+          suggestion?.categoryId && form.categoryId && suggestion.categoryId !== form.categoryId,
+        ),
       }),
     });
 
@@ -62,6 +124,8 @@ export function TransactionForm({ categories, onCreated }: TransactionFormProps)
       categoryId: "",
       date: new Date().toISOString().slice(0, 10),
     });
+    setSuggestion(null);
+    setSuggestionError("");
     onCreated();
   }
 
@@ -71,7 +135,10 @@ export function TransactionForm({ categories, onCreated }: TransactionFormProps)
       <div className="grid gap-3 md:grid-cols-5">
         <select
           value={form.type}
-          onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value as EntryType, categoryId: "" }))}
+          onChange={(event) => {
+            setForm((prev) => ({ ...prev, type: event.target.value as EntryType, categoryId: "" }));
+            setSuggestion(null);
+          }}
           className="rounded-lg px-3 py-2 text-sm"
           aria-label="Transaction type"
           title="Transaction type"
@@ -120,10 +187,22 @@ export function TransactionForm({ categories, onCreated }: TransactionFormProps)
           aria-label="Description"
           title="Description"
           value={form.description}
-          onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+          onChange={(event) => {
+            setForm((prev) => ({ ...prev, description: event.target.value }));
+            setSuggestion(null);
+            setSuggestionError("");
+          }}
           className="rounded-lg px-3 py-2 text-sm"
         />
       </div>
+      {suggesting ? <p className="text-xs text-cyan-300">AI is categorizing this transaction...</p> : null}
+      {suggestion ? (
+        <p className="text-xs text-slate-300">
+          AI suggestion: <span className="font-semibold text-slate-100">{suggestion.categoryName}</span>{" "}
+          ({Math.round(suggestion.confidenceScore * 100)}%)
+        </p>
+      ) : null}
+      {suggestionError ? <p className="text-xs text-amber-400">{suggestionError}</p> : null}
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       <button
         type="submit"

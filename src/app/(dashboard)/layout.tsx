@@ -10,8 +10,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="md:flex">
-      <Sidebar />
-      <main className="min-h-screen flex-1 p-4 md:p-8">
+      <Sidebar userName={session.user.name} userEmail={session.user.email} />
+      <main className="min-h-screen flex-1 p-4 pt-20 md:p-8 md:pt-8">
         <div className="mx-auto w-full max-w-7xl">{children}</div>
       </main>
     </div>

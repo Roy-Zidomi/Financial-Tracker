@@ -1,6 +1,7 @@
 import { badRequest, requireUserId, unauthorized } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { transactionUpdateSchema } from "@/lib/validations";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -19,9 +20,34 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   try {
     const parsed = transactionUpdateSchema.parse(await request.json());
+    const { isCorrectedByUser, ...rest } = parsed;
+
+    if (rest.categoryId) {
+      const category = await prisma.category.findFirst({
+        where: {
+          id: rest.categoryId,
+          OR: [{ userId }, { isDefault: true, userId: null }],
+        },
+      });
+      if (!category) {
+        return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+      }
+    }
+
+    const updateData: Prisma.TransactionUpdateInput = {
+      ...rest,
+      isCorrectedByUser:
+        isCorrectedByUser ??
+        (rest.categoryId !== undefined &&
+        existing.isAutoCategorized &&
+        rest.categoryId !== existing.categoryId
+          ? true
+          : existing.isCorrectedByUser),
+    };
+
     const updated = await prisma.transaction.update({
       where: { id },
-      data: parsed,
+      data: updateData,
       include: {
         category: {
           select: { id: true, name: true, type: true },
